@@ -75,7 +75,9 @@ for i = 1:n
 end
 
 % Combine data into a matrix
-Result = [agent_id, A_init, distances, times];
+ResultTable = table(agent_id, A_init(:,1), A_init(:,2), distances, times, ...
+    'VariableNames', {'id', 'X', 'Y', 'd', 't'});
+
 
 
 % Function 1: DeployAgents.m
