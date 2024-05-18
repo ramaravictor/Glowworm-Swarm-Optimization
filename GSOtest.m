@@ -1,227 +1,141 @@
-
 clc; clear all; close all;
-tic
 
-global n m A_init A Ell gamma ro step1 r_d r_s beta r_min n_t bound
+% Load the Excel file
+filename = 'Hsimulasi.xlsx';
+data = readtable(filename);
 
-m = 2;                          % No. of dimensions
+% Filter data for time 
+data_at_time = data(data.time == 86, :);
 
-% Parameter initialization
-% -----------------------------------------------
-n = 80;                         % No. of agents
-r_s = 40;                        % Sensor range
-r_d = r_s * ones(n, 1);         % Local decision range
-r_min = 0;                      % Threshold decision range
-gamma = 0.6;                    % Luciferin enhancement constant
-ro = 0.4;                       % Luciferin decay constant
-step1 = 0.03;                   % Distance moved by each glowworm when a decision is taken
-beta = 0.08;                    % Decision range gain
-n_t = 5;                        % Desired no. of neighbors
+% Select columns 'id', 'x', 'y', and 'speed'
+selected_data = data_at_time(:, {'id', 'x', 'y', 'speed'});
 
-% Initialization of variables
-% ----------------------------------------------------
-bound = 400;                      % Parameter specifying the workspace range
-DeployAgents;                   % Deploy the glowworms randomly
-Ell = 5 * ones(n, 1);           % Initialization of Luciferin levels
-j = 1;                          % Iteration index
-iter = 250;                     % No. of iterations
+% Convert 'id'
+selected_data.id = cellfun(@(x) str2double(x(3:end)), cellstr(selected_data.id));
 
+% length of the road
+L = 777.91;
 
-% Main loop
-% ----------------------------------------------
-while (j <= iter)
-    UpdateLuciferin;            % Update the luciferin levels at glowworms' current positions
-    Act;                        % Select a direction and move
-    for k = 1 : n               % store the state histories
-        agent_x(k, j, :) = A(k, 1);
-        agent_y(k, j, :) = A(k, 2);
-    end
-    j = j + 1;
-    j                           % Display iteration number
+% Calculate the fitness for each vehicle
+epsilon = 0.001;  % A small constant to prevent division by zero
+min_fitness = 1; % Minimal fitness level for movement
+selected_data.fitness = L ./ max(selected_data.speed, epsilon);
+selected_data.fitness = max(selected_data.fitness, min_fitness); % Apply minimum fitness
+
+% Introduce small variability to the fitness to avoid equal values
+selected_data.fitness = selected_data.fitness + 0.01 * randn(size(selected_data.fitness));
+
+% Initialize options
+options = struct('population', 75, 'L0', 5, 'r0', 30, 'rho', 0.4, 'y', 0.6, 'B', 0.08, 's', 0.8, 'rs', 30, 'nt', 5, 'maxIter', 150, 'showplot', true);
+L0 = options.L0;
+r0 = options.r0;
+rho = options.rho;
+y = options.y;
+B = options.B;
+rs = options.rs;
+nt = options.nt;
+maxIter = options.maxIter;
+
+m = 2; % 2D space for (x, y)
+n = options.population;
+s = options.s;
+
+% Initialize positions and luciferin
+positions = [selected_data.x, selected_data.y]; % ubah 2 dimensi
+
+luciferin = options.L0 * ones(n, 1);
+rd = options.r0 * ones(n, 1);
+colors = lines(n); % Different colors for each glowworm
+
+% Initialize a cell array to store the trails of each glowworm
+trails = cell(n, 1);
+for i = 1:n
+    trails{i} = positions(i, :);
 end
-toc                             % Display the total computation time
 
-
-
-% Plots
-% -------------------------------------------------
-figure(1);                      % Plot of trajectories of glowworms from their
-                                % initial locations to final locations
-plot(A_init(:, 1), A_init(:, 2), 'x');
-xlabel('X'); ylabel('Y');
+figure; % Open figure for plotting
 hold on;
-
-for k = 1 : n
-    plot(agent_x(k, :, :), agent_y(k, :, :));
-end
-
+title('Glowworm Swarm Optimization');
+xlabel('X Coordinate');
+ylabel('Y Coordinate');
 grid on;
+
+% Plot initial positions   
+plot(positions(:,1), positions(:,2), 'x'); % Initial positions with larger 'x'
 hold on;
-%plot([-0.0093; 1.2857; -0.46], [1.5814; -0.0048; -0.6292], 'ok');
-
-figure(2);                      % Plot of final locations of glowworms
-plot(A(:, 1), A(:, 2), '.');
-
-grid on;
+plot (selected_data.x, selected_data.y, 'o')
 hold on;
-%plot([-0.0093; 1.2857; -0.46], [1.5814; -0.0048; -0.6292], 'ok');
+% Main simulation loop
+for t = 1:maxIter
+    old_positions = positions;
+    old_luciferin = luciferin; % Save the previous luciferin values
 
-
-
-
-
-
-
-
-
-% Function 1: DeployAgents.m
-% ---------------------------------------------------
-function DeployAgents
-    global n m A_init A bound
-    
-    % Load data dari file Excel
-    filename = 'Hsimulasi.xlsx';
-    sheet = 'Sheet2';
-    data = readtable(filename, 'Sheet', sheet);
-    
-    % Ambil 80 data pertama dari kolom x dan y
-    x = data.x(1:80);
-    y = data.y(1:80);
-  
-    
-    % Inisialisasi matriks A_init dengan posisi berdasarkan jalur dan vektor bantu
-    A_init = zeros(n, m);
+    % Update Luciferin
     for i = 1:n
-        A_init(i, 1) = x(i); % Koordinat x diambil dari vektor bantu
-        A_init(i, 2) = y(i); % Koordinat y diambil dari jalur
+        luciferin(i) = (1 - rho) * old_luciferin(i) + y * selected_data.fitness(i);
     end
-    
-    % Inisialisasi matriks A dengan posisi awal A_init
-    A = A_init;
-end
 
+    % Movement of Glowworm
+    for i = 1:n
+        % Calculate Euclidean distance between glowworm i and all other glowworms
+        distances = sqrt(sum((positions - positions(i,:)).^2, 2));
+        
+        % Define neighbors Ni(t) based on the given formula
+        Ni = find((distances < rd(i)) & (luciferin(i) < luciferin) & (distances > 0));
 
-% Function 2: UpdateLuciferin.m
-% -------------------------------------------------
-function UpdateLuciferin
-    global n A j Ell gamma ro
-    for i = 1 : n
-        x = A(i, 1); y = A(i, 2);
-        % The Matlab 'Peaks' function is used here. Please replace it with
-        % the multimodal function for which peaks are sought
-        j(i, :) = 3 * (1 - x)^2 * exp(-(x^2) - (y + 1)^2) - 10 * (x / 5 - x^3 - y^5) * exp(-x^2 - y^2) - 1 / 3 * exp(-(x + 1)^2 - y^2);
-        Ell(i, :) = (1 - ro) * Ell(i, :) + gamma * j(i, :);
-    end
-end
-
-% Function 3: Act.m
-% ---------------------------------------------------
-function Act
-    global n r_s r_d N N_a beta n_t
-    N(:, :) = zeros(n, n);
-    N_a(:, :) = zeros(n, 1);
-    for i = 1 : n
-        FindNeighbors(i);
-        FindProbabilities(i);
-        Leader(i) = SelectAgent(i);
-    end
-    for i = 1 : n
-        Move(i, Leader(i));
-        r_d(i) = max(0, min(r_s, r_d(i) + beta * (n_t - N_a(i))));
-    end
-end
-
-% Function 4: FindNeighbors.m
-% ---------------------------------------------------
-function FindNeighbors(i)
-    global n m A N r_d N_a Ell
-    n_sum = 0;
-    for j = 1 : n
-        if (j ~= i)
-            square_sum = 0;
-            for k = 1 : m
-                square_sum = square_sum + (A(i, k) - A(j, k))^2;
-            end
-            d = sqrt(square_sum);
-            if (d <= r_d(i)) & (Ell(i) < Ell(j))
-                N(i, j) = 1;
-                n_sum = n_sum + 1;
+        if ~isempty(Ni)
+            % Calculate weights and probabilities for neighbors
+            weights = luciferin(Ni) - luciferin(i);
+            if any(weights > 0)
+                probabilities = weights / sum(weights);
+                % Select a neighbor j based on the calculated probabilities
+                j = Ni(randsample(length(Ni), 1, true, probabilities));
+                % Update positions in 2D using the provided formula
+                direction = (positions(j,:) - positions(i,:));
+                norm_direction = norm(direction);
+                if norm_direction > 0
+                    positions(i,1) = positions(i,1) + s * (positions(j,1) - positions(i,1)) / norm_direction;
+                    positions(i,2) = positions(i,2) + s * (positions(j,2) - positions(i,2)) / norm_direction;
+                end
             end
         end
-    end
-    N_a(i) = n_sum;
-end
 
-% Function 5: FindProbabilities.m
-% ----------------------------------------------
-function FindProbabilities(i)
-    global n N Ell pb
-    Ell_sum = 0;
-    for j = 1 : n
-        Ell_sum = Ell_sum + N(i, j) * (Ell(j) - Ell(i));
+        % Update the trail for the current glowworm
+        trails{i} = [trails{i}; positions(i, :)];
     end
-    epsilon = 1e-10;  % Epsilon value to avoid division by zero
-    if (Ell_sum == 0)
-        pb(i, :) = zeros(1, n);
-    else
-        for j = 1 : n
-            pb(i, j) = (N(i, j) * (Ell(j) - Ell(i))) / (Ell_sum + epsilon);
-        end
-    end
-end
 
 
-% Function 6: SelectAgent.m
-% ----------------------------------------------
-function j = SelectAgent(i)
-    global n pb
-    bound_lower = 0;
-    bound_upper = 0;
-    toss = rand;
-    j = 0;
-    for k = 1 : n
-        bound_lower = bound_upper;
-        bound_upper = bound_upper + pb(i, k);
-        if (toss > bound_lower) & (toss < bound_upper)
-            j = k;
-            break;
-        end
+     % Update Decision Range
+    for i = 1:n
+        % Calculate Ni(t) again for updating the decision range
+        distances = sqrt(sum((positions - positions(i,:)).^2, 2));
+        Ni = find((distances < rd(i)) & (luciferin(i) < luciferin) & (distances > 0));
+        n_i = length(Ni);  % Number of neighbors
+        
+        % Update the decision range based on the formula
+        rd(i) = min(options.rs, max(0, rd(i) + options.B * (options.nt - n_i))); % Update decision range
+    end
+
+
+    % Draw trails
+    for i = 1:n
+        plot([old_positions(i,1), positions(i,1)], [old_positions(i,2), positions(i,2)], 'Color', colors(i,:), 'LineWidth', 1); % Thinner lines for paths
+    end
+
+    if options.showplot
+        drawnow;
     end
 end
 
-% Function 7: Move.m
-% ----------------------------------------------
-function Move(i, j)
-    global A m step1 Ell bound
-    temp = A; % Inisialisasi temp dengan nilai A sebelum perubahan
-    if (j ~= 0) & (Ell(i) < Ell(j))
-        temp(i, :) = A(i, :) + step1 * Path(i, j);
-        flag = 0;
-        for k = 1 : m
-            if (temp(i, k) < -bound) | (temp(i, k) > bound)
-                flag = 1;
-                break;
-            end
-        end
-        if (flag == 0)
-            A(i, :) = temp(i, :);
-        end
-    end
-end
+% Mark final positions with 'o' for only the glowworms that moved
+moved = sqrt(sum((positions - initial_positions).^2, 2)) > 0; % Check if each glowworm moved
+scatter(positions(moved, 1), positions(moved, 2), 70, 'o', 'LineWidth', 1, 'MarkerEdgeColor', 'm', 'MarkerFaceColor', 'm'); % Mark final positions with yellow filled circles
+hold off;
 
-
-% Function 8: Path.m
-% ----------------------------------------------
-function Del = Path(i, j)
-    global A m
-    square_sum = 0;
-    for k = 1 : m
-        square_sum = square_sum + (A(i, k) - A(j, k))^2;
-    end
-    hyp = sqrt(square_sum);
-    for k = 1 : m
-        Del(:, k) = (A(j, k) - A(i, k)) / hyp;
-    end
-end
+% Display final positions and luciferin levels
+disp('Final positions:');   
+disp(positions);
+disp('Final luciferin levels:');
+disp(luciferin);
 
 
