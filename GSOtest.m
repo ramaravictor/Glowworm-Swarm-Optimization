@@ -19,7 +19,6 @@ selected_data = data(data.time == most_frequent_time, :);
 [~, unique_idx] = unique(selected_data.id);
 selected_data = selected_data(unique_idx, :);
 
-
 % XML preprocessing to create a mapping of lane id to length
 xml_data = xmlread('Rute.net.xml');
 
@@ -47,7 +46,6 @@ for i = 1:height(selected_data)
         warning('Lane ID %s not found in XML', lane_id);
     end
 end
-
 
 % Ensure the 'meanspeed' column is numeric
 if iscell(selected_data.meanspeed)
@@ -87,7 +85,8 @@ Fitness = L ./ AVt;
 
 Agent = [x, y];             % Initializes the Search Agents (SA)
 
-luciferin = L0 * ones(n, 1);
+luciferin = zeros(n, maxIter);  % Initialize luciferin levels for all glowworms and time steps
+luciferin(:, 1) = L0;           % Set initial luciferin levels to L0
 rd = r0 * ones(n, 1);
 
 figure; % Open figure for plotting
@@ -100,6 +99,15 @@ grid on;
 plot(x, y, 'o');
 hold off;
 
+% Main simulation loop
+for t = 1:maxIter
+    % Update Luciferin
+    if t > 1
+        for i = 1:n
+            luciferin(i,t) = (1 - rho) * luciferin(i,t-1) + gamma * Fitness(i);
+        end
+    end
+    
+end
 
-
-
+disp(luciferin);  % Display the luciferin levels for verification
