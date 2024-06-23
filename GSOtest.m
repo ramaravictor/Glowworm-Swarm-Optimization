@@ -7,30 +7,15 @@ close all;
 filename = 'selected_data.xlsx';
 data = readtable(filename);
 
-% Ensure the 'meanspeed' column is numeric
-if iscell(data.meanspeed)
-    data.meanspeed = cellfun(@str2double, data.meanspeed);
-end
-
-% Ensure 'x' and 'y' columns are numeric
-if iscell(data.x)
-    x = cellfun(@str2double, data.x);
-else
-    x = data.x;
-end
-
-if iscell(data.y)
-    y = cellfun(@str2double, data.y);
-else 
-    y = data.y;
-end
+x = data.x;
+y = data.y;
 
 %% ------- Initialize variables --------------------------------------------
 
 n = height(data);           % Number of glowworms
 s = 0.8;                    % Step size
 L0 = 5;                     % Initial luciferin
-r0 = 50;                    % Initial decision range
+r0 = 30;                    % Initial decision range
 rho = 0.4;                  % Luciferin decay constant
 gamma = 0.6;                % Luciferin enhancement constant
 B = 0.08;                   % Decision range update constant
@@ -51,20 +36,27 @@ AVt = data.meanspeed;
 
 Fitness = L ./ AVt;
 
-
 %% ------- Start of plot ---------------------------------------------------
 
 figure; 
 hold on;
-xlabel('X');
-ylabel('Y');
-grid on;
+grid off;
 
 % Plot initial positions
-h = plot(x, y, 'o'); % Handle to the plot
-pause(0.2)
+plot(x, y, 'x');
 hold on;
 
+% Plot handles for the glowworm positions and trails
+plotUpdate = plot(x, y, 'o'); % Handle to the plot
+trailPlot = gobjects(n, 1); % Array of handles for the trails
+
+% Initialize trail plots
+for i = 1:n
+    trailPlot(i) = plot(NaN, NaN, '-'); % Initial empty plot for each glowworm
+end
+
+pause(0.2);
+hold on;
 
 %% ------- Iterasi ---------------------------------------------------------
 
@@ -85,23 +77,38 @@ for t = 1:maxIter
         Ni = find((distance < decision_range(ii)) & (luciferin(:, t) > curLuciferin));
         
         if isempty(Ni)  % If no glow-worm exists within its local range
-            Agent(ii,:) = curAgent;
+            newAgent = curAgent;
         else
             localRangeLuciferin = luciferin(Ni, t);
             localRangeAgent = Agent(Ni, :);
 
             probs = (localRangeLuciferin - curLuciferin) / sum(localRangeLuciferin - curLuciferin);
           
-            selectedJ = localRangeAgent(SelectByRoulette(probs), :);
+            j = SelectByRoulette(probs);
             
-            Agent(ii, :) = curAgent + s * (selectedJ - curAgent) / EuclidDistance(selectedJ, curAgent);
+            if ~isempty(j)
+                selectedJ = localRangeAgent(j, :);
+                
+                newAgent = curAgent + s * (selectedJ - curAgent) ./ EuclidDistance(selectedJ, curAgent);
+            else
+                newAgent = curAgent; % No movement if no selection is made
+            end
         end
+        
+        % Update position
+        Agent(ii, :) = newAgent;
+        
+        % Update trail plot
+        xTrail = get(trailPlot(ii), 'XData');
+        yTrail = get(trailPlot(ii), 'YData');
+        set(trailPlot(ii), 'XData', [xTrail newAgent(1)], 'YData', [yTrail newAgent(2)]);
+        
         neighborSz = length(Ni);
         decision_range(ii) = min([rs, max([0, decision_range(ii) + B * (nt - neighborSz)])]);
     end
     
-    % Update plot
-    set(h, 'XData', Agent(:,1), 'YData', Agent(:,2));
+    % Update glowworm positions plot
+    set(plotUpdate, 'XData', Agent(:,1), 'YData', Agent(:,2));
     drawnow; % Force MATLAB to update the plot
     pause(0.1); % Add a pause to see the movement clearly
 end
