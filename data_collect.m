@@ -4,7 +4,7 @@ close all;
 
 % Load the Excel file
 
-filename = 'newdataset.xlsx';
+filename = 'datasetsumo.xlsx';
 sheetName = 'selected_data';
 selected_data = readtable(filename, 'Sheet', sheetName);
 
@@ -22,7 +22,7 @@ selected_data = readtable(filename, 'Sheet', sheetName);
 % selected_data = selected_data(unique_idx, :);
 
 % XML preprocessing to create a mapping of lane id to length
-xml_data = xmlread('Rute.net.xml');
+    
 
 lane_length_map = containers.Map;
 edges = xml_data.getElementsByTagName('edge');
